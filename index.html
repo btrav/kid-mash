@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KidMash 🎉</title>
+
+  <!-- =============================================
+       FONT
+       Change the font name here and in the CSS below.
+       Browse options at: https://fonts.google.com
+       ============================================= -->
+  <link href="https://fonts.googleapis.com/css2?family=Boogaloo&display=swap" rel="stylesheet" />
+
+  <style>
+    /* =============================================
+       THEME VARIABLES
+       Controls colors for dark mode (default) and light mode.
+       To change a color, edit the value next to the variable name.
+       ============================================= */
+    :root {
+      --bg:         black;
+      --text:       white;
+      --text-dim:   rgba(255, 255, 255, 0.35);
+      --ripple:     rgba(180, 0, 255, 0.9);
+    }
+
+    /* Light mode overrides — applied when body has class="light" */
+    body.light {
+      --bg:         #fffef0;
+      --text:       #222222;
+      --text-dim:   rgba(0, 0, 0, 0.35);
+      --ripple:     rgba(80, 80, 80, 0.3);
+    }
+
+    /* =============================================
+       BASE STYLES
+       ============================================= */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: var(--bg);
+      transition: background 0.3s;   /* Smooth fade when toggling theme */
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;              /* No scrollbars — emojis live in a fixed world */
+      font-family: 'Boogaloo', cursive;  /* Change font name here too if you swap it above */
+      user-select: none;             /* Prevents text selection when mashing keys */
+    }
+
+    /* =============================================
+       TITLE — top of screen
+       ============================================= */
+    #title {
+      position: fixed;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 2.8rem;         /* Change size here */
+      color: var(--text);
+      letter-spacing: 2px;
+      pointer-events: none;
+      z-index: 10;
+      white-space: nowrap;
+    }
+
+    /* =============================================
+       PRESS COUNTERS — top-right corner
+       Two separate counters: keyboard keys and mouse clicks.
+       ============================================= */
+    #counter {
+      position: fixed;
+      top: 20px;
+      right: 24px;
+      display: flex;
+      gap: 16px;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .counter-item {
+      text-align: center;
+      line-height: 1.1;
+    }
+    .counter-item .count-label {
+      font-size: 0.75rem;
+      font-family: sans-serif;
+      color: var(--text-dim);
+      display: block;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .counter-item .count-number {
+      font-size: 2rem;           /* The big number */
+      display: block;
+      color: var(--text);
+      opacity: 0.5;
+    }
+
+    /* =============================================
+       FOOTER — bottom of screen, for parents
+       ============================================= */
+    #footer {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.78rem;
+      font-family: sans-serif;           /* Plain font — easier to read at small size */
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 10;
+    }
+    #footer a {
+      pointer-events: all;
+    }
+
+    /* =============================================
+       CONTROL BUTTONS (sound + theme)
+       Sit in the bottom-right corner, stacked.
+       ============================================= */
+    #controls {
+      position: fixed;
+      bottom: 14px;
+      right: 24px;
+      display: flex;
+      gap: 6px;
+      z-index: 999;
+    }
+    #controls button {
+      font-size: 1.4rem;
+      background: none;
+      border: none;
+      cursor: pointer;
+      opacity: 0.4;
+      transition: opacity 0.2s;
+    }
+    #controls button:hover {
+      opacity: 1;
+    }
+
+    /* =============================================
+       EMOJI / KEY ELEMENTS
+       Two-layer structure:
+         .burst-anchor  — fixed position + centering transform (never animated)
+         .burst         — animation lives here (free to use any transform)
+       Keeping them separate prevents animation transforms from
+       overwriting the centering transform.
+       ============================================= */
+    .burst-anchor {
+      position: fixed;           /* Placed at the spawn point */
+      pointer-events: none;
+      transform: translate(-50%, -50%);  /* Centers content on the point */
+      z-index: 2;                /* In front of ripples */
+    }
+
+    .burst {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 1;
+    }
+
+    .burst .emoji {
+      font-size: 5rem;           /* SIZE of the emoji — increase to make bigger */
+    }
+
+    .burst .key-label {
+      font-size: 2.5rem;         /* SIZE of the letter/number shown below the emoji */
+      color: var(--text);
+      margin-top: -6px;
+    }
+
+    /* =============================================
+       ANIMATIONS
+       Each animation has a name and a @keyframes block below.
+       To add a new animation, duplicate a keyframe block,
+       give it a unique name, and add it to the JS `animations` array.
+       ============================================= */
+
+    /* Floats up and fades away */
+    @keyframes float-up {
+      0%   { transform: translateY(0)    scale(1);   opacity: 1; }
+      100% { transform: translateY(-180px) scale(0.6); opacity: 0; }
+    }
+
+    /* Bounces in and then fades */
+    @keyframes bounce-in {
+      0%   { transform: scale(0);    opacity: 0; }
+      50%  { transform: scale(1.4);  opacity: 1; }
+      70%  { transform: scale(0.9);  opacity: 1; }
+      85%  { transform: scale(1.1);  opacity: 1; }
+      100% { transform: scale(1);    opacity: 0; }
+    }
+
+    /* Spins while scaling up, then fades */
+    @keyframes spin-pop {
+      0%   { transform: rotate(0deg)   scale(0); opacity: 0; }
+      40%  { transform: rotate(200deg) scale(1.3); opacity: 1; }
+      80%  { transform: rotate(340deg) scale(1); opacity: 1; }
+      100% { transform: rotate(360deg) scale(0.8); opacity: 0; }
+    }
+
+    /* Wiggles side to side, then fades */
+    @keyframes wiggle {
+      0%   { transform: rotate(0deg)   scale(1);   opacity: 1; }
+      15%  { transform: rotate(-18deg) scale(1.1); opacity: 1; }
+      30%  { transform: rotate(18deg)  scale(1.1); opacity: 1; }
+      45%  { transform: rotate(-12deg) scale(1);   opacity: 1; }
+      60%  { transform: rotate(12deg)  scale(1);   opacity: 1; }
+      80%  { transform: rotate(-5deg)  scale(0.9); opacity: 0.6; }
+      100% { transform: rotate(0deg)   scale(0.7); opacity: 0; }
+    }
+
+    /* Quick punch-in pop, then fades */
+    @keyframes punch {
+      0%   { transform: scale(0);  opacity: 0; }
+      30%  { transform: scale(1.6); opacity: 1; }
+      55%  { transform: scale(0.9); opacity: 1; }
+      75%  { transform: scale(1.1); opacity: 1; }
+      100% { transform: scale(1.3); opacity: 0; }
+    }
+
+    /* Drops from above */
+    @keyframes drop-in {
+      0%   { transform: translateY(-120px) scale(1.2); opacity: 0; }
+      40%  { transform: translateY(10px)   scale(1);   opacity: 1; }
+      60%  { transform: translateY(-15px)  scale(1.1); opacity: 1; }
+      80%  { transform: translateY(5px)    scale(1);   opacity: 1; }
+      100% { transform: translateY(0)      scale(0.8); opacity: 0; }
+    }
+
+    /* =============================================
+       COMBO BANNER
+       Appears in the center when a streak is hit.
+       ============================================= */
+    #combo-banner {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0);
+      font-size: 4rem;           /* Size of the combo message */
+      color: white;
+      pointer-events: none;
+      z-index: 100;
+      white-space: nowrap;
+      text-shadow: 0 0 30px rgba(255, 220, 0, 0.8);
+    }
+
+    @keyframes combo-pop {
+      0%   { transform: translate(-50%, -50%) scale(0);   opacity: 0; }
+      20%  { transform: translate(-50%, -50%) scale(1.3); opacity: 1; }
+      40%  { transform: translate(-50%, -50%) scale(0.95); opacity: 1; }
+      70%  { transform: translate(-50%, -50%) scale(1);   opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+    }
+
+    /* =============================================
+       RIPPLE / SHOCKWAVE
+       A blurred, diffused circle that expands from the spawn point.
+       To change color, edit --ripple in the THEME VARIABLES above.
+       To change size, adjust scale() in @keyframes ripple-out.
+       To change blur amount, adjust filter: blur() below.
+       ============================================= */
+    .ripple {
+      position: fixed;
+      border-radius: 50%;
+      pointer-events: none;
+      width: 40px;               /* Starting diameter */
+      height: 40px;
+      border: 10px solid var(--ripple);
+      filter: blur(6px) brightness(1.8);  /* Higher = more diffuse/glowy */
+      animation: ripple-out 700ms ease-out forwards;
+      z-index: 1;                /* Behind emojis */
+    }
+
+    @keyframes ripple-out {
+      /* translate(-50%,-50%) keeps it centered on the spawn point throughout */
+      0%   { transform: translate(-50%, -50%) scale(0);   opacity: 1; }
+      60%  { transform: translate(-50%, -50%) scale(3);   opacity: 0.5; }
+      100% { transform: translate(-50%, -50%) scale(4.5); opacity: 0; }
+    }
+
+    /* =============================================
+       FIREWORK — missile + explosion sparks
+       Triggered by spacebar.
+       ============================================= */
+
+    /* The missile dot that flies up the screen.
+       left/top anchor it to the launch point; the animation moves it via transform.
+       --dx, --dy, --flight-ms are set per-launch in JS. */
+    .missile {
+      position: fixed;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 0 6px 4px rgba(255, 200, 80, 0.9);
+      pointer-events: none;
+      z-index: 5;
+      animation: missile-fly var(--flight-ms) linear forwards;
+    }
+
+    @keyframes missile-fly {
+      /* Starts centered on launch point, ends centered on target.
+         transform does all the movement — no CSS transitions involved. */
+      0%   { transform: translate(-50%, -50%); }
+      100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))); }
+    }
+
+    /* Individual explosion spark particle */
+    .spark {
+      position: fixed;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    @keyframes spark-fly {
+      /* --dx and --dy are set per-particle in JS to define the explosion direction */
+      0%   { transform: translate(calc(-50% + 0px),        calc(-50% + 0px))        scale(1);   opacity: 1; }
+      60%  { opacity: 0.9; }
+      100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.1); opacity: 0; }
+    }
+
+  </style>
+</head>
+<body>
+
+  <!-- App title — visible at the top for kids -->
+  <div id="title">✨ KidMash ✨</div>
+
+  <!-- Press counters — top-right, separate keyboard and mouse tallies -->
+  <div id="counter">
+    <div class="counter-item">
+      <span class="count-label">⌨️ keys</span>
+      <span class="count-number" id="key-count">0</span>
+    </div>
+    <div class="counter-item">
+      <span class="count-label">🖱️ clicks</span>
+      <span class="count-number" id="click-count">0</span>
+    </div>
+  </div>
+
+  <!-- Footer — small info for parents, barely visible during play -->
+  <div id="footer">
+    Press any letter or number key or click anywhere! &nbsp;·&nbsp; Try the spacebar 🚀 &nbsp;·&nbsp;
+    Made by <a href="https://github.com/btrav" target="_blank" style="color: inherit; opacity: 0.7;">btrav</a>, built with Claude
+  </div>
+
+  <!-- Combo banner — hidden by default, shown mid-screen on streaks -->
+  <div id="combo-banner"></div>
+
+  <!-- Controls: sound toggle + theme toggle -->
+  <div id="controls">
+    <button id="theme-toggle" title="Toggle light/dark mode">☀️</button>
+    <button id="sound-toggle" title="Toggle sound">🔇</button>
+  </div>
+
+  <script>
+    // =============================================
+    // EMOJI MAP — per letter, exactly 5 choices each
+    // Each letter key maps to 5 emojis thematically linked to that letter.
+    // One is picked at random on each keypress.
+    // To swap an emoji, just replace it in the list (keep exactly 5).
+    // =============================================
+    const LETTER_EMOJIS = {
+      a: ['🍎','🐊','⚓','✈️','🥑'],
+      b: ['🐻','🐝','🍌','🦋','🏀'],
+      c: ['🐱','🦀','🍪','🐄','🌵'],
+      d: ['🐶','🦕','🍩','🦆','🐬'],
+      e: ['🐘','🦅','🥚','🌍','⚡'],
+      f: ['🦊','🐸','🔥','🐟','🌸'],
+      g: ['🦍','🦒','🍇','👻','💎'],
+      h: ['🐴','🦛','🍯','❤️','🎩'],
+      i: ['🍦','🧊','🌈','💫','🎸'],
+      j: ['🐆','🪼','🍋','🃏','🎷'],
+      k: ['🐨','🦘','🥝','🔑','👑'],
+      l: ['🦁','🦞','🍋','🍃','🌙'],
+      m: ['🐒','🍄','🌙','🧲','🐭'],
+      n: ['🌙','🍜','🥷','🎵','🌿'],
+      o: ['🐙','🦉','🍊','🌍','🦦'],
+      p: ['🐧','🐷','🍕','🦜','🐼'],
+      q: ['👸','🃏','💠','🌀','🎯'],
+      r: ['🐰','🚀','🌈','🌹','🤖'],
+      s: ['🐍','⭐','🍓','🦈','☀️'],
+      t: ['🐯','🐢','🌮','🦖','🌴'],
+      u: ['🦄','☂️','🌌','🪐','💫'],
+      v: ['🌋','🎻','🧛','💜','🦅'],
+      w: ['🐺','🐋','🍉','🧙','🌊'],
+      x: ['❌','🎸','🦴','🧬','⚡'],
+      y: ['🦬','🧶','🌻','🎯','⚡'],
+      z: ['🦓','🧟','⚡','💨','🌀'],
+    };
+
+    // Numbers share one pool (no per-digit theming)
+    const NUMBER_EMOJIS = ['🎈','🎉','🎊','🥳','🌟','💥','🔥','🚀','💫','✨','🎯','🎁'];
+
+    // Returns the right emoji pool for a given character
+    function emojiPoolFor(character) {
+      if (!character) return NUMBER_EMOJIS;
+      const key = character.toLowerCase();
+      return LETTER_EMOJIS[key] || NUMBER_EMOJIS;
+    }
+
+    // =============================================
+    // ANIMATION LIST
+    // These match the @keyframes names in the CSS above.
+    // Add/remove names here to include/exclude animations.
+    // =============================================
+    const ANIMATIONS = [
+      'float-up',
+      'bounce-in',
+      'spin-pop',
+      'wiggle',
+      'punch',
+      'drop-in',
+    ];
+
+    // =============================================
+    // TIMING
+    // How long (in milliseconds) before an emoji disappears.
+    // 1000ms = 1 second. Keep this in sync with animation durations above.
+    // =============================================
+    const EMOJI_DURATION = 2400;
+
+    // =============================================
+    // PRESS COUNTERS
+    // Separate tallies for keyboard presses and mouse clicks.
+    // Drag trail contributes to neither.
+    // =============================================
+    let keyPresses   = 0;
+    let mouseClicks  = 0;
+    const keyCountEl   = document.getElementById('key-count');
+    const clickCountEl = document.getElementById('click-count');
+
+    function incrementKeyCounter() {
+      keyPresses++;
+      keyCountEl.textContent = keyPresses;
+    }
+
+    function incrementClickCounter() {
+      mouseClicks++;
+      clickCountEl.textContent = mouseClicks;
+    }
+
+    // =============================================
+    // THEME TOGGLE (light / dark)
+    // =============================================
+    const themeBtn = document.getElementById('theme-toggle');
+    let isLight = false;
+
+    themeBtn.addEventListener('click', () => {
+      isLight = !isLight;
+      document.body.classList.toggle('light', isLight);
+      themeBtn.textContent = isLight ? '🌙' : '☀️';
+    });
+
+    // =============================================
+    // SOUND SETTINGS
+    // =============================================
+    let soundEnabled = false;   // Sound is OFF by default
+    let audioCtx = null;        // Web Audio context (created on first use)
+
+    const soundBtn = document.getElementById('sound-toggle');
+
+    soundBtn.addEventListener('click', () => {
+      soundEnabled = !soundEnabled;
+      soundBtn.textContent = soundEnabled ? '🔊' : '🔇';
+
+      // Create audio context on first enable (browsers require a user gesture first)
+      if (soundEnabled && !audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    });
+
+    // =============================================
+    // PLAY A SOUND
+    // Generates a cheerful synthetic blip using the Web Audio API.
+    // Tweak the numbers below to change how sounds feel:
+    //   - frequency: pitch (higher = squeakier)
+    //   - gainPeak: volume (0 to 1)
+    //   - duration: how long the note plays
+    // =============================================
+    function playSound() {
+      if (!soundEnabled || !audioCtx) return;
+
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      // Random cheerful pitch between 300Hz and 900Hz
+      const frequency = 300 + Math.random() * 600;
+      osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+
+      // Wave shape — try 'sine', 'square', 'sawtooth', or 'triangle'
+      osc.type = 'sine';
+
+      // Volume envelope: quick attack, fast decay — keeps it snappy
+      const gainPeak = 0.35;
+      const duration = 0.18;
+      gain.gain.setValueAtTime(0, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(gainPeak, audioCtx.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+      osc.start(audioCtx.currentTime);
+      osc.stop(audioCtx.currentTime + duration);
+    }
+
+    // =============================================
+    // SHARED HELPER — builds and places an emoji burst
+    // x, y are pixel coordinates of the center point.
+    // character is optional (shown below the emoji for key presses).
+    //
+    // Two-layer structure:
+    //   anchor  → handles position + centering (never animated, never moves)
+    //   burst   → handles animation (transforms here don't affect positioning)
+    // =============================================
+    function spawnEmojiAt(x, y, character = '') {
+      // Pick one emoji from the character's specific pool (always exactly one)
+      const pool  = emojiPoolFor(character);
+      const emoji = pool[Math.floor(Math.random() * pool.length)];
+      const animation = ANIMATIONS[Math.floor(Math.random() * ANIMATIONS.length)];
+
+      // Outer anchor: fixed at (x,y), translate(-50%,-50%) centers it there.
+      // This element is NEVER animated — its transform is safe from being overwritten.
+      const anchor = document.createElement('div');
+      anchor.className = 'burst-anchor';
+      anchor.style.left = `${x}px`;
+      anchor.style.top  = `${y}px`;
+
+      // Inner burst: carries the animation. Transforms here only affect scale/rotation,
+      // not position, because positioning is owned by the anchor above.
+      const burst = document.createElement('div');
+      burst.className = 'burst';
+      burst.style.animation = `${animation} ${EMOJI_DURATION}ms ease-out forwards`;
+      burst.innerHTML = `
+        <div class="emoji">${emoji}</div>
+        ${character ? `<div class="key-label">${character.toUpperCase()}</div>` : ''}
+      `;
+
+      anchor.appendChild(burst);
+      document.body.appendChild(anchor);
+      setTimeout(() => anchor.remove(), EMOJI_DURATION);
+
+      spawnRipple(x, y);
+    }
+
+    // =============================================
+    // CREATE AN EMOJI BURST — keyboard keypress
+    // Picks a random screen position, then delegates to spawnEmojiAt.
+    // =============================================
+    function spawnBurst(character) {
+      // Random pixel position, keeping emojis away from the edges
+      const x = (0.10 + Math.random() * 0.80) * window.innerWidth;
+      const y = (0.15 + Math.random() * 0.70) * window.innerHeight;
+      spawnEmojiAt(x, y, character);
+    }
+
+    // =============================================
+    // COMBO STREAK
+    // Every COMBO_THRESHOLD presses shows a celebration message.
+    // Change COMBO_THRESHOLD to require more/fewer presses per combo.
+    // Change COMBO_RESET_MS to how long of a pause resets the streak.
+    // =============================================
+    const COMBO_THRESHOLD = 35;   // Presses needed to trigger a combo message
+    const COMBO_RESET_MS  = 2000; // Idle time (ms) before streak resets
+
+    // Messages shown at each combo milestone — add more if you like!
+    const COMBO_MESSAGES = [
+      '🔥 COMBO!',
+      '🌟 AMAZING!',
+      '💥 WOAH!',
+      '🎉 KEEP GOING!',
+      '🚀 ON FIRE!',
+      '⭐ SUPERSTAR!',
+    ];
+
+    let comboCount    = 0;
+    let comboTimer    = null;
+    const comboBanner = document.getElementById('combo-banner');
+
+    function registerPress() {
+      comboCount++;
+
+      // Reset the idle timer on every press
+      clearTimeout(comboTimer);
+      comboTimer = setTimeout(() => { comboCount = 0; }, COMBO_RESET_MS);
+
+      // Fire a combo message when the threshold is hit, then reset counter
+      if (comboCount >= COMBO_THRESHOLD) {
+        comboCount = 0;
+        const msg = COMBO_MESSAGES[Math.floor(Math.random() * COMBO_MESSAGES.length)];
+        comboBanner.textContent = msg;
+        comboBanner.style.animation = 'none';
+        // Tiny delay forces the browser to restart the animation
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            comboBanner.style.animation = 'combo-pop 1200ms ease-out forwards';
+          });
+        });
+      }
+    }
+
+    // =============================================
+    // FIREWORK — launched by spacebar
+    // A glowing dot flies from the bottom to a random spot,
+    // then explodes into colored sparks.
+    // Every 20-40 spacebar presses triggers a MEGA firework.
+    // =============================================
+
+    // Colors used for explosion sparks.
+    // Add or remove colors freely — use any CSS color string.
+    const SPARK_COLORS = [
+      '#ff4444', '#ff8800', '#ffdd00',  // red, orange, yellow
+      '#44ff66', '#00ddff', '#4488ff',  // green, cyan, blue
+      '#cc44ff', '#ff44cc', '#ffffff',  // purple, pink, white
+    ];
+
+    // Spacebar press tracking for mega firework
+    let spacebarCount    = 0;
+    let nextMegaAt       = 20 + Math.floor(Math.random() * 21); // first trigger: 20–40 presses
+
+    function launchFirework() {
+      spacebarCount++;
+
+      // Check if it's time for a mega firework
+      if (spacebarCount >= nextMegaAt) {
+        spacebarCount = 0;
+        nextMegaAt    = 20 + Math.floor(Math.random() * 21); // pick next threshold: 20–40
+        launchMegaFirework();
+        return;
+      }
+      // Random launch point along the bottom edge
+      const startX = (0.15 + Math.random() * 0.70) * window.innerWidth;
+      const startY = window.innerHeight + 5; // just below screen
+
+      // Random target — upper half of screen, away from edges
+      const targetX = (0.15 + Math.random() * 0.70) * window.innerWidth;
+      const targetY = (0.12 + Math.random() * 0.45) * window.innerHeight;
+
+      // Flight time in ms — tweak to make missile faster or slower
+      const flightMs = 550 + Math.random() * 250;
+
+      // How far the missile needs to travel (used by the @keyframes animation)
+      const dx = targetX - startX;
+      const dy = targetY - startY;
+
+      // Create the missile, anchored at the launch point.
+      // The CSS animation (missile-fly) moves it to the target via transform.
+      // Using @keyframes means the animation starts the instant the element
+      // is added to the DOM — no rAF timing tricks needed.
+      const missile = document.createElement('div');
+      missile.className = 'missile';
+      missile.style.left = `${startX}px`;
+      missile.style.top  = `${startY}px`;
+      missile.style.setProperty('--dx', `${dx}px`);
+      missile.style.setProperty('--dy', `${dy}px`);
+      missile.style.setProperty('--flight-ms', `${flightMs}ms`);
+      document.body.appendChild(missile);
+
+      // When the missile arrives: remove it and explode
+      setTimeout(() => {
+        missile.remove();
+        explode(targetX, targetY);
+      }, flightMs);
+    }
+
+    function explode(x, y) {
+      // Number of sparks — increase for a bigger explosion
+      const SPARK_COUNT = 22;
+
+      for (let i = 0; i < SPARK_COUNT; i++) {
+        // Spread sparks evenly around a full circle, plus a little random jitter
+        const angle    = (i / SPARK_COUNT) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+        const distance = 70 + Math.random() * 90;  // px — how far sparks travel
+        const dx       = Math.cos(angle) * distance;
+        const dy       = Math.sin(angle) * distance;
+
+        const color    = SPARK_COLORS[Math.floor(Math.random() * SPARK_COLORS.length)];
+        const size     = 5 + Math.random() * 7;         // px — spark dot size
+        const duration = 650 + Math.random() * 350;     // ms — how long each spark lives
+
+        const spark = document.createElement('div');
+        spark.className = 'spark';
+        spark.style.left      = `${x}px`;
+        spark.style.top       = `${y}px`;
+        spark.style.width     = `${size}px`;
+        spark.style.height    = `${size}px`;
+        spark.style.background = color;
+        spark.style.boxShadow  = `0 0 ${size * 2}px ${color}`;  /* glow matching spark color */
+        spark.style.setProperty('--dx', `${dx}px`);
+        spark.style.setProperty('--dy', `${dy}px`);
+        spark.style.animation  = `spark-fly ${duration}ms ease-out forwards`;
+
+        document.body.appendChild(spark);
+        setTimeout(() => spark.remove(), duration);
+      }
+
+      // Play a sound if sound is on
+      playSound();
+    }
+
+    // =============================================
+    // MEGA FIREWORK
+    // Fires 5 missiles in rapid succession, each with a much larger explosion.
+    // Triggered automatically every 20-40 spacebar presses.
+    // =============================================
+    function launchMegaFirework() {
+      const COUNT = 5; // how many missiles fire at once
+
+      for (let i = 0; i < COUNT; i++) {
+        // Stagger launches by up to 400ms so they don't all explode simultaneously
+        const delay = i * (80 + Math.random() * 80);
+
+        setTimeout(() => {
+          const startX  = (0.1 + Math.random() * 0.8) * window.innerWidth;
+          const startY  = window.innerHeight + 5;
+          const targetX = (0.1 + Math.random() * 0.8) * window.innerWidth;
+          const targetY = (0.08 + Math.random() * 0.50) * window.innerHeight;
+          const flightMs = 400 + Math.random() * 200; // faster than normal
+          const dx = targetX - startX;
+          const dy = targetY - startY;
+
+          const missile = document.createElement('div');
+          missile.className = 'missile';
+          // Bigger, brighter missile for mega mode
+          missile.style.width     = '12px';
+          missile.style.height    = '12px';
+          missile.style.boxShadow = '0 0 10px 6px rgba(255, 160, 40, 1)';
+          missile.style.left = `${startX}px`;
+          missile.style.top  = `${startY}px`;
+          missile.style.setProperty('--dx', `${dx}px`);
+          missile.style.setProperty('--dy', `${dy}px`);
+          missile.style.setProperty('--flight-ms', `${flightMs}ms`);
+          document.body.appendChild(missile);
+
+          setTimeout(() => {
+            missile.remove();
+            megaExplode(targetX, targetY);
+          }, flightMs);
+        }, delay);
+      }
+    }
+
+    function megaExplode(x, y) {
+      const SPARK_COUNT = 50;  // more sparks than a regular explosion
+
+      for (let i = 0; i < SPARK_COUNT; i++) {
+        const angle    = (i / SPARK_COUNT) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+        const distance = 120 + Math.random() * 140;  // travels much farther
+        const dx       = Math.cos(angle) * distance;
+        const dy       = Math.sin(angle) * distance;
+
+        const color    = SPARK_COLORS[Math.floor(Math.random() * SPARK_COLORS.length)];
+        const size     = 7 + Math.random() * 9;          // bigger sparks
+        const duration = 800 + Math.random() * 500;
+
+        const spark = document.createElement('div');
+        spark.className = 'spark';
+        spark.style.left       = `${x}px`;
+        spark.style.top        = `${y}px`;
+        spark.style.width      = `${size}px`;
+        spark.style.height     = `${size}px`;
+        spark.style.background = color;
+        spark.style.boxShadow  = `0 0 ${size * 3}px ${color}`;  /* extra glow */
+        spark.style.setProperty('--dx', `${dx}px`);
+        spark.style.setProperty('--dy', `${dy}px`);
+        spark.style.animation  = `spark-fly ${duration}ms ease-out forwards`;
+
+        document.body.appendChild(spark);
+        setTimeout(() => spark.remove(), duration);
+      }
+
+      playSound();
+    }
+
+    // =============================================
+    // KEY LISTENER
+    // Fires on every keydown. Letters/numbers spawn emojis. Space launches firework.
+    // =============================================
+    document.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+
+      // Spacebar = firework
+      if (e.key === ' ') {
+        e.preventDefault(); // prevent page scroll
+        launchFirework();
+        registerPress();
+        return;
+      }
+
+      const key = e.key;
+      const isLetterOrNumber = /^[a-zA-Z0-9]$/.test(key);
+      if (!isLetterOrNumber) return;
+
+      spawnBurst(key);
+      playSound();
+      registerPress();
+      incrementKeyCounter();
+    });
+
+    // =============================================
+    // RIPPLE
+    // Spawns a shockwave circle at (x, y) in pixels.
+    // =============================================
+    function spawnRipple(x, y) {
+      const ripple = document.createElement('div');
+      ripple.className = 'ripple';
+      ripple.style.left = `${x}px`;
+      ripple.style.top  = `${y}px`;
+      document.body.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 700); // matches ripple-out animation duration
+    }
+
+    // =============================================
+    // SPAWN EMOJI AT PIXEL COORDS — mouse click
+    // Just delegates to the shared helper.
+    // =============================================
+    function spawnAtPixel(x, y) {
+      spawnEmojiAt(x, y);
+    }
+
+    // =============================================
+    // MOUSE / CLICK LISTENER
+    // A single click spawns an emoji + ripple and counts as a mouse click.
+    // =============================================
+    document.addEventListener('mousedown', (e) => {
+      if (e.target === soundBtn || e.target === themeBtn) return;
+      spawnAtPixel(e.clientX, e.clientY);
+      playSound();
+      registerPress();
+      incrementClickCounter();
+    });
+
+    // =============================================
+    // DRAG TRAIL
+    // While the mouse button is held and moving, spawn ripples only —
+    // no emoji, no counter increment.
+    //
+    // TRAIL_THROTTLE_MS — lower = more ripples per drag.
+    //                     raise it if it feels like too much.
+    // =============================================
+    const TRAIL_THROTTLE_MS = 60; // Minimum ms between trail ripples
+
+    let isDragging    = false;
+    let lastTrailTime = 0;
+
+    document.addEventListener('mousedown', (e) => {
+      if (e.target !== soundBtn && e.target !== themeBtn) isDragging = true;
+    });
+
+    document.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+
+      const now = Date.now();
+      if (now - lastTrailTime < TRAIL_THROTTLE_MS) return;
+      lastTrailTime = now;
+
+      // Ripple only — no emoji, no counter
+      spawnRipple(e.clientX, e.clientY);
+    });
+  </script>
+</body>
+</html>

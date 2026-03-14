@@ -350,7 +350,7 @@
   <!-- Footer — small info for parents, barely visible during play -->
   <div id="footer">
     Press any letter or number key or click anywhere! &nbsp;·&nbsp; Try the spacebar 🚀 &nbsp;·&nbsp;
-    Made by <a href="https://github.com/btrav" target="_blank" style="color: inherit; opacity: 0.7;">btrav</a>, built with Claude
+    Made by <a href="https://github.com/btrav" target="_blank" style="color: inherit; opacity: 0.7;">btrav</a>
   </div>
 
   <!-- Combo banner — hidden by default, shown mid-screen on streaks -->
@@ -786,14 +786,20 @@
     // KEY LISTENER
     // Fires on every keydown. Letters/numbers spawn emojis. Space launches firework.
     // =============================================
+    let spaceHoldInterval = null;
+
     document.addEventListener('keydown', (e) => {
       if (e.repeat) return;
 
-      // Spacebar = firework
+      // Spacebar = firework (fires immediately, then every 250ms while held)
       if (e.key === ' ') {
         e.preventDefault(); // prevent page scroll
         launchFirework();
         registerPress();
+        spaceHoldInterval = setInterval(() => {
+          launchFirework();
+          registerPress();
+        }, 250);
         return;
       }
 
@@ -805,6 +811,13 @@
       playSound();
       registerPress();
       incrementKeyCounter();
+    });
+
+    document.addEventListener('keyup', (e) => {
+      if (e.key === ' ' && spaceHoldInterval !== null) {
+        clearInterval(spaceHoldInterval);
+        spaceHoldInterval = null;
+      }
     });
 
     // =============================================

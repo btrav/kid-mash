@@ -143,6 +143,36 @@
     #controls button:hover {
       opacity: 1;
     }
+    #controls button.active {
+      opacity: 1;                /* Stays bright to show the mode is on */
+    }
+
+    /* =============================================
+       TODDLER MODE TOOLTIP
+       Appears above the 🧸 button on hover.
+       ============================================= */
+    #toddler-toggle {
+      position: relative;
+    }
+    #toddler-toggle::after {
+      content: 'Toddler mode: gentle animations, one firework at a time, no combos';
+      position: absolute;
+      bottom: calc(100% + 10px);
+      right: 0;
+      background: rgba(0, 0, 0, 0.78);
+      color: #fff;
+      font-size: 0.72rem;
+      font-family: sans-serif;
+      white-space: nowrap;
+      padding: 6px 10px;
+      border-radius: 6px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    #toddler-toggle:hover::after {
+      opacity: 1;
+    }
 
     /* =============================================
        EMOJI / KEY ELEMENTS
@@ -233,6 +263,13 @@
       60%  { transform: translateY(-15px)  scale(1.1); opacity: 1; }
       80%  { transform: translateY(5px)    scale(1);   opacity: 1; }
       100% { transform: translateY(0)      scale(0.8); opacity: 0; }
+    }
+
+    /* Soft pop — used in toddler mode. No movement, no rotation, just a calm fade. */
+    @keyframes gentle-pop {
+      0%   { transform: scale(0.5); opacity: 0; }
+      30%  { transform: scale(1);   opacity: 1; }
+      100% { transform: scale(0.9); opacity: 0; }
     }
 
     /* =============================================
@@ -356,8 +393,9 @@
   <!-- Combo banner — hidden by default, shown mid-screen on streaks -->
   <div id="combo-banner"></div>
 
-  <!-- Controls: sound toggle + theme toggle -->
+  <!-- Controls: toddler mode + sound toggle + theme toggle -->
   <div id="controls">
+    <button id="toddler-toggle" aria-label="Toggle toddler mode">🧸</button>
     <button id="theme-toggle" title="Toggle light/dark mode">☀️</button>
     <button id="sound-toggle" title="Toggle sound">🔇</button>
   </div>
@@ -376,7 +414,7 @@
       d: ['🐶','🦕','🍩','🦆','🐬'],
       e: ['🐘','🦅','🥚','🌍','⚡'],
       f: ['🦊','🐸','🔥','🐟','🌸'],
-      g: ['🦍','🦒','🍇','👻','💎'],
+      g: ['🦒','🦍','🍇','👻','💎'],
       h: ['🐴','🦛','🍯','❤️','🎩'],
       i: ['🍦','🧊','🌈','💫','🎸'],
       j: ['🐆','🪼','🍋','🃏','🎷'],
@@ -387,7 +425,7 @@
       o: ['🐙','🦉','🍊','🌍','🦦'],
       p: ['🐧','🐷','🍕','🦜','🐼'],
       q: ['👸','🃏','💠','🌀','🎯'],
-      r: ['🐰','🚀','🌈','🌹','🤖'],
+      r: ['🤖','🚀','🌈','🌹','🐰'],
       s: ['🐍','⭐','🍓','🦈','☀️'],
       t: ['🐯','🐢','🌮','🦖','🌴'],
       u: ['🦄','☂️','🌌','🪐','💫'],
@@ -401,11 +439,14 @@
     // Numbers share one pool (no per-digit theming)
     const NUMBER_EMOJIS = ['🎈','🎉','🎊','🥳','🌟','💥','🔥','🚀','💫','✨','🎯','🎁'];
 
-    // Returns the right emoji pool for a given character
+    // Returns the right emoji pool for a given character.
+    // In toddler mode, letter keys always return the same single emoji
+    // (the first in their pool) — one consistent symbol per letter.
     function emojiPoolFor(character) {
       if (!character) return NUMBER_EMOJIS;
-      const key = character.toLowerCase();
-      return LETTER_EMOJIS[key] || NUMBER_EMOJIS;
+      const key  = character.toLowerCase();
+      const pool = LETTER_EMOJIS[key] || NUMBER_EMOJIS;
+      return (toddlerMode && LETTER_EMOJIS[key]) ? [pool[0]] : pool;
     }
 
     // =============================================
@@ -448,6 +489,24 @@
       mouseClicks++;
       clickCountEl.textContent = mouseClicks;
     }
+
+    // =============================================
+    // TODDLER MODE
+    // A calmer experience: one consistent emoji per letter, no hold-to-repeat
+    // fireworks, only one firework in flight at a time, gentle animations,
+    // no combo banner, and no drag trail.
+    // =============================================
+    let toddlerMode     = false;
+    let fireworkInFlight = false; // blocks a second firework while one is active (toddler mode only)
+
+    const toddlerBtn = document.getElementById('toddler-toggle');
+
+    toddlerBtn.addEventListener('click', () => {
+      toddlerMode = !toddlerMode;
+      toddlerBtn.classList.toggle('active', toddlerMode);
+      // If toddler mode is turned off mid-flight, release the lock so fireworks work again
+      if (!toddlerMode) fireworkInFlight = false;
+    });
 
     // =============================================
     // THEME TOGGLE (light / dark)
@@ -527,7 +586,10 @@
       // Pick one emoji from the character's specific pool (always exactly one)
       const pool  = emojiPoolFor(character);
       const emoji = pool[Math.floor(Math.random() * pool.length)];
-      const animation = ANIMATIONS[Math.floor(Math.random() * ANIMATIONS.length)];
+      // Toddler mode uses a single calm animation instead of a random dramatic one
+      const animation = toddlerMode
+        ? 'gentle-pop'
+        : ANIMATIONS[Math.floor(Math.random() * ANIMATIONS.length)];
 
       // Outer anchor: fixed at (x,y), translate(-50%,-50%) centers it there.
       // This element is NEVER animated — its transform is safe from being overwritten.
@@ -594,13 +656,20 @@
       clearTimeout(comboTimer);
       comboTimer = setTimeout(() => { comboCount = 0; }, COMBO_RESET_MS);
 
+      // Combo banner is too stimulating for toddler mode — skip it
+      if (toddlerMode) return;
+
       // Fire a combo message when the threshold is hit, then reset counter
       if (comboCount >= COMBO_THRESHOLD) {
         comboCount = 0;
         const msg = COMBO_MESSAGES[Math.floor(Math.random() * COMBO_MESSAGES.length)];
         comboBanner.textContent = msg;
         comboBanner.style.animation = 'none';
-        // Tiny delay forces the browser to restart the animation
+        // Two nested rAFs are needed to restart the animation reliably.
+        // The first rAF fires before the browser repaints, so the style
+        // change hasn't been flushed yet. The second rAF fires after the
+        // repaint, guaranteeing the 'none' state has been committed and
+        // the new animation starts fresh from frame 0.
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             comboBanner.style.animation = 'combo-pop 1200ms ease-out forwards';
@@ -629,15 +698,22 @@
     let nextMegaAt       = 20 + Math.floor(Math.random() * 21); // first trigger: 20–40 presses
 
     function launchFirework() {
-      spacebarCount++;
+      if (toddlerMode) {
+        // In toddler mode: lock so only one firework runs at a time,
+        // and skip mega firework logic entirely.
+        fireworkInFlight = true;
+      } else {
+        spacebarCount++;
 
-      // Check if it's time for a mega firework
-      if (spacebarCount >= nextMegaAt) {
-        spacebarCount = 0;
-        nextMegaAt    = 20 + Math.floor(Math.random() * 21); // pick next threshold: 20–40
-        launchMegaFirework();
-        return;
+        // Check if it's time for a mega firework
+        if (spacebarCount >= nextMegaAt) {
+          spacebarCount = 0;
+          nextMegaAt    = 20 + Math.floor(Math.random() * 21); // pick next threshold: 20–40
+          launchMegaFirework();
+          return;
+        }
       }
+
       // Random launch point along the bottom edge
       const startX = (0.15 + Math.random() * 0.70) * window.innerWidth;
       const startY = window.innerHeight + 5; // just below screen
@@ -666,10 +742,12 @@
       missile.style.setProperty('--flight-ms', `${flightMs}ms`);
       document.body.appendChild(missile);
 
-      // When the missile arrives: remove it and explode
+      // When the missile arrives: remove it and explode.
+      // In toddler mode, release the lock after the sparks finish (max ~1000ms).
       setTimeout(() => {
         missile.remove();
         explode(targetX, targetY);
+        if (toddlerMode) setTimeout(() => { fireworkInFlight = false; }, 1000);
       }, flightMs);
     }
 
@@ -786,20 +864,30 @@
     // KEY LISTENER
     // Fires on every keydown. Letters/numbers spawn emojis. Space launches firework.
     // =============================================
-    let spaceHoldInterval = null;
+    let spaceHoldInterval = null; // setInterval handle while spacebar is held; null when released
 
     document.addEventListener('keydown', (e) => {
+      // e.repeat is true when a key is held down — skip those to avoid
+      // flooding the screen with dozens of emojis per second.
       if (e.repeat) return;
 
       // Spacebar = firework (fires immediately, then every 250ms while held)
       if (e.key === ' ') {
         e.preventDefault(); // prevent page scroll
-        launchFirework();
-        registerPress();
-        spaceHoldInterval = setInterval(() => {
+        if (toddlerMode) {
+          // In toddler mode: one firework at a time, no hold-to-repeat
+          if (!fireworkInFlight) {
+            launchFirework();
+            registerPress();
+          }
+        } else {
           launchFirework();
           registerPress();
-        }, 250);
+          spaceHoldInterval = setInterval(() => {
+            launchFirework();
+            registerPress();
+          }, 250);
+        }
         return;
       }
 
@@ -844,6 +932,10 @@
     // =============================================
     // MOUSE / CLICK LISTENER
     // A single click spawns an emoji + ripple and counts as a mouse click.
+    //
+    // Note: there are two separate 'mousedown' listeners — this one handles
+    // the click spawn + counter, and the one below manages drag state.
+    // They're kept separate so each has a single, clear responsibility.
     // =============================================
     document.addEventListener('mousedown', (e) => {
       if (e.target === soundBtn || e.target === themeBtn) return;
@@ -876,6 +968,7 @@
 
     document.addEventListener('mousemove', (e) => {
       if (!isDragging) return;
+      if (toddlerMode) return; // no drag trail in toddler mode
 
       const now = Date.now();
       if (now - lastTrailTime < TRAIL_THROTTLE_MS) return;

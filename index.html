@@ -439,14 +439,17 @@
     // Numbers share one pool (no per-digit theming)
     const NUMBER_EMOJIS = ['🎈','🎉','🎊','🥳','🌟','💥','🔥','🚀','💫','✨','🎯','🎁'];
 
+    const GENTLE_ANIMATION       = 'gentle-pop'; // animation name used in toddler mode
+    const TODDLER_SPARK_COOLDOWN = 1000;          // ms to wait after explosion before allowing next firework
+
     // Returns the right emoji pool for a given character.
     // In toddler mode, letter keys always return the same single emoji
     // (the first in their pool) — one consistent symbol per letter.
     function emojiPoolFor(character) {
       if (!character) return NUMBER_EMOJIS;
-      const key  = character.toLowerCase();
-      const pool = LETTER_EMOJIS[key] || NUMBER_EMOJIS;
-      return (toddlerMode && LETTER_EMOJIS[key]) ? [pool[0]] : pool;
+      const letterPool = LETTER_EMOJIS[character.toLowerCase()];
+      if (!letterPool) return NUMBER_EMOJIS;
+      return (toddlerMode) ? [letterPool[0]] : letterPool;
     }
 
     // =============================================
@@ -588,7 +591,7 @@
       const emoji = pool[Math.floor(Math.random() * pool.length)];
       // Toddler mode uses a single calm animation instead of a random dramatic one
       const animation = toddlerMode
-        ? 'gentle-pop'
+        ? GENTLE_ANIMATION
         : ANIMATIONS[Math.floor(Math.random() * ANIMATIONS.length)];
 
       // Outer anchor: fixed at (x,y), translate(-50%,-50%) centers it there.
@@ -747,7 +750,7 @@
       setTimeout(() => {
         missile.remove();
         explode(targetX, targetY);
-        if (toddlerMode) setTimeout(() => { fireworkInFlight = false; }, 1000);
+        if (toddlerMode) setTimeout(() => { fireworkInFlight = false; }, TODDLER_SPARK_COOLDOWN);
       }, flightMs);
     }
 

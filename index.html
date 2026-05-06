@@ -499,16 +499,22 @@
     // fireworks, only one firework in flight at a time, gentle animations,
     // no combo banner, and no drag trail.
     // =============================================
-    let toddlerMode     = false;
+    // Default toddler mode ON for users who've asked the OS for reduced motion —
+    // toddler mode already implements the right gentle fallback (single firework,
+    // gentle-pop animation, no combos, no drag trail).
+    let toddlerMode     = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let fireworkInFlight = false; // blocks a second firework while one is active (toddler mode only)
 
     const toddlerBtn = document.getElementById('toddler-toggle');
+    toddlerBtn.classList.toggle('active', toddlerMode);
 
     toddlerBtn.addEventListener('click', () => {
       toddlerMode = !toddlerMode;
       toddlerBtn.classList.toggle('active', toddlerMode);
       // If toddler mode is turned off mid-flight, release the lock so fireworks work again
       if (!toddlerMode) fireworkInFlight = false;
+      // Drop focus so a subsequent spacebar fires fireworks instead of re-toggling the button.
+      toddlerBtn.blur();
     });
 
     // =============================================
@@ -521,6 +527,7 @@
       isLight = !isLight;
       document.body.classList.toggle('light', isLight);
       themeBtn.textContent = isLight ? '🌙' : '☀️';
+      themeBtn.blur(); // see toddler-toggle handler for why
     });
 
     // =============================================
@@ -539,6 +546,11 @@
       if (soundEnabled && !audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       }
+      // Browsers can suspend the context after backgrounding; resume on the gesture.
+      if (soundEnabled && audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      soundBtn.blur(); // see toddler-toggle handler for why
     });
 
     // =============================================
@@ -551,6 +563,9 @@
     // =============================================
     function playSound() {
       if (!soundEnabled || !audioCtx) return;
+      // Safari/Chrome can auto-suspend after backgrounding. Resume so sound
+      // doesn't go silent with the toggle still on.
+      if (audioCtx.state === 'suspended') audioCtx.resume();
 
       const osc  = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
@@ -796,6 +811,11 @@
     // =============================================
     function launchMegaFirework() {
       const COUNT = 5; // how many missiles fire at once
+      // Hold the firework lock for the full mega sequence so a toddler-mode
+      // toggle mid-flight can't fire another firework on top of it.
+      // Worst case: max stagger (4 * 160ms) + max flight (600ms) + max spark (1300ms) ≈ 2540ms.
+      fireworkInFlight = true;
+      setTimeout(() => { fireworkInFlight = false; }, 2700);
 
       for (let i = 0; i < COUNT; i++) {
         // Stagger launches by up to 400ms so they don't all explode simultaneously
@@ -886,6 +906,9 @@
         } else {
           launchFirework();
           registerPress();
+          // Guard against losing track of an existing handle if a second
+          // keydown slips through (e.g. focus changes ate the keyup).
+          if (spaceHoldInterval !== null) clearInterval(spaceHoldInterval);
           spaceHoldInterval = setInterval(() => {
             launchFirework();
             registerPress();
@@ -909,6 +932,19 @@
         clearInterval(spaceHoldInterval);
         spaceHoldInterval = null;
       }
+    });
+
+    // If the window loses focus (alt-tab, switch tabs) we may never get the
+    // matching keyup, so the interval would keep firing in the background.
+    function stopSpaceHold() {
+      if (spaceHoldInterval !== null) {
+        clearInterval(spaceHoldInterval);
+        spaceHoldInterval = null;
+      }
+    }
+    window.addEventListener('blur', stopSpaceHold);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stopSpaceHold();
     });
 
     // =============================================
@@ -940,8 +976,14 @@
     // the click spawn + counter, and the one below manages drag state.
     // They're kept separate so each has a single, clear responsibility.
     // =============================================
+    // True when the click landed on one of the corner control buttons —
+    // those should never spawn an emoji or count as a click.
+    function isControlButton(target) {
+      return target === soundBtn || target === themeBtn || target === toddlerBtn;
+    }
+
     document.addEventListener('mousedown', (e) => {
-      if (e.target === soundBtn || e.target === themeBtn) return;
+      if (isControlButton(e.target)) return;
       spawnAtPixel(e.clientX, e.clientY);
       playSound();
       registerPress();
@@ -962,7 +1004,7 @@
     let lastTrailTime = 0;
 
     document.addEventListener('mousedown', (e) => {
-      if (e.target !== soundBtn && e.target !== themeBtn) isDragging = true;
+      if (!isControlButton(e.target)) isDragging = true;
     });
 
     document.addEventListener('mouseup', () => {
